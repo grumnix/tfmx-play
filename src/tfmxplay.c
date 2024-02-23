@@ -285,7 +285,7 @@ void check_md5_and_headers(char *mfile)
 		if (nTFhd_offset+nTFhd_mdatsize+nTFhd_smplsize != size)
 		{
 			printf("\nERROR! 1-file TFMX header defines illegal size:\
-[%d] instead of [%d] \n",nTFhd_offset+nTFhd_mdatsize+nTFhd_smplsize,(unsigned long)size);
+[%d] instead of [%ld] \n",nTFhd_offset+nTFhd_mdatsize+nTFhd_smplsize,size);
 			exit(0);
 		}
 	
