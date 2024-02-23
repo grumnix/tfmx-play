@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <openssl/evp.h>
+#include <arpa/inet.h>
 
 #ifdef _SDL_Framework
         #include <SDL/SDL.h>
