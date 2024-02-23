@@ -712,7 +712,9 @@ void do_debug()
 	while(1)
 	{
 		for(x=0;x<81;in[x++]=0);
-		fgets(in,80,stdin);
+		if (fgets(in,80,stdin) == NULL) {
+                  return;
+                }
 		switch(in[0])
 		{
 		case 'p':
