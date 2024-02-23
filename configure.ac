@@ -1,7 +1,8 @@
-AC_INIT(configure.in)
+AC_INIT([tfmxplay], [1.1.7])
+AC_CONFIG_SRCDIR([src/player.c])
 
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(tfmxplay, 1.1)
+AM_INIT_AUTOMAKE
 
 AC_C_BIGENDIAN
 AC_LANG_C

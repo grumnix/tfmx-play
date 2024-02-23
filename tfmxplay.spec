@@ -11,7 +11,7 @@ Copyright:    GPL
 Group:        Productivity/Multimedia/Sound/Players
 Summary:      Player for TFMX music files
 BuildRoot:    /var/tmp/%{name}-buildroot
-Version:      1.1.6
+Version:      1.1.7
 Release:      1
 Source0:      %{name}-%{version}.tar.gz
 Provides:     tfmx-play

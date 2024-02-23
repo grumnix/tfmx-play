@@ -4,6 +4,9 @@
  * means bug squashed.
  - means feature removed.
 
+Changes in tfmx-play/SDL 1.1.7 (work-in-progress)
+ + rewrote sound buffer handling to avoid cracking/stalling audio output
+
 Changes in tfmx-play/SDL 1.1.6 (work-in-progress)
  + tfmx-play now supports DOS-style named files
    (foobar.tfx + foobar.sam), but not for the single-file format

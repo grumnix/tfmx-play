@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include "player.h"
+#include <pthread.h>
 
 #include <sys/stat.h>
 
@@ -26,10 +27,6 @@
 
 void tfmxIrqIn();
 
-static Uint8 *audio_chunk;
-static Uint32 audio_len;
-static Uint8 *audio_pos;
-
 char act[8]={1,1,1,1,1,1,1,1};
 
 extern int toOutFile;
@@ -40,8 +37,8 @@ extern struct Mdb mdb;
 /* we have to make HALFBUFSIZE really 1/2 of BUFSIZE now,
 so we can use the maximum fragment size for SDL (...choppy sound under
 heavy CPU load otherwise...) */
-#define HALFBUFSIZE 65536
-#define BUFSIZE 131072
+#define HALFBUFSIZE (65536 * 4)
+#define BUFSIZE (131072 * 4)
 
 union
 {
@@ -49,8 +46,7 @@ union
  U8 b8[BUFSIZE];
 } buf;
 
-#define bofsize BUFSIZE-1
-int bhead=0,btail=0,bqueue=0;
+volatile int bhead=0,btail=0;
 
 
 S32 tbuf[HALFBUFSIZE*2];
@@ -67,6 +63,9 @@ int eRem=0; /* remainder of eclocks */
 int blend=1; /* default to blended mode */
 int filt=1; /* light lpf */
 int over=0;
+
+pthread_mutex_t lock;
+pthread_cond_t cond;
 
 void fill_audio(void *udata, Uint8 *stream, int len);
 void filter(S32 *b, int num);
@@ -85,6 +84,13 @@ void TfmxTakedown(void);
 int try_to_makeblock(void);
 void tfmxIrqIn(void);
 
+static int available_sound_data()
+{
+    int l = bhead - btail + BUFSIZE;
+    l %= BUFSIZE;
+
+    return l;
+}
 
 /* Simple little three-position weighted-sum LPF. */
 
@@ -142,8 +148,12 @@ void conv_u8(S32 *b,int num)
 	S32 *c=b;
 	U8 *a=(U8 *)&buf.b8[bhead];
 
-	bhead=(bhead+(num*multiplier))&(bofsize);
-
+    // there should always be enough space for conversion since buffer is only
+    // filled half so abort in this case. We could wait here instead.
+    if ( available_sound_data() + ( num * multiplier ) >= BUFSIZE ) {
+        abort();
+    }
+    
 	filter(b,num);
 	stereoblend(b,num);
 
@@ -173,6 +183,8 @@ void conv_u8(S32 *b,int num)
 		c[HALFBUFSIZE]=0;
 		*c++=0;
 	}
+
+	bhead = ( bhead + ( num * multiplier ) ) % BUFSIZE;
 }
 
 void conv_s16(S32 *b,int num)
@@ -181,8 +193,12 @@ void conv_s16(S32 *b,int num)
 	S32 *c=b;
 	S16 *a=(S16 *)&buf.b8[bhead];
 
-	bhead=(bhead+(num*multiplier))&(bofsize);
-
+    // there should always be enough space for conversion since buffer is only
+    // filled half so abort in this case. We could wait here instead.
+    if ( available_sound_data() + ( num * multiplier ) >= BUFSIZE ) {
+        abort();
+    }
+    
 	filter(b,num);
 	stereoblend(b,num);
 
@@ -211,6 +227,8 @@ void conv_s16(S32 *b,int num)
 		c[HALFBUFSIZE]=0;
 		*c++=0;
 	}
+
+	bhead = ( bhead + ( num * multiplier ) ) % BUFSIZE;
 }
 
 void (*conv)(S32 *,int)=&conv_s16;
@@ -441,10 +459,6 @@ void open_snddev()
 	}
 	SDL_PauseAudio(0);
 
-	/* wait one second so the initial buffer is correctly filled, otherwise
-	the start sounds choppy... */
-	SDL_Delay(1000);
-
 	multiplier*=(stereo?2:1);
 	multiplier/=(force8?2:1);
 
@@ -475,7 +489,7 @@ void open_sndfile()
 
 	blocksize=HALFBUFSIZE;
 
-	if ((sndhdl=open(outf,O_WRONLY|O_CREAT,0644))<0)
+	if ((sndhdl=open(outf,O_WRONLY|O_CREAT|O_TRUNC,0644))<0)
 	{		
 		perror("open");
 		_exit(1);
@@ -519,10 +533,11 @@ int try_to_makeblock()
 {
 	static S32 nb=0,bd=0; /* num bytes, bytes done */
 	int n,r=0;
+    int loops = 0;
 
-	while ( (unsigned int)(!r) && 
-		((unsigned int)(bqueue+2) <  (BUFSIZE/(blocksize*multiplier))) )
-	{
+    while ( available_sound_data() < BUFSIZE / 2 && mdb.PlayerEnable ) {
+        loops++;
+
 		tfmxIrqIn();
 		nb=(eClocks*(outRate>>1));
 		eRem+=(nb%357955);
@@ -536,90 +551,120 @@ int try_to_makeblock()
 			bytes+=n;
 			bd+=n;
 			nb-=n;
-			if ( ((unsigned int)bd) == blocksize)
+
+            // convert full blocksize or partial block at end of player
+			if ( ((unsigned int)bd) == blocksize || ! mdb.PlayerEnable )
 			{
 				conv(&tbuf[0],bd);
 				bd=0;
-				bqueue++;
-				/*printf("make %d\n",bqueue);*/ r++;
+				r++;
 			}
 		}
 	}
+
+    if ( ! loops && toOutFile == 0 ) {
+        pthread_mutex_lock( &lock );
+        if ( available_sound_data() >= BUFSIZE / 2 ) {
+            pthread_cond_wait( &cond, &lock );
+        }
+        pthread_mutex_unlock( &lock );
+    }
+    
 	return((mdb.PlayerEnable)?r:-1);
 }
 
-
 void fill_audio(void *udata, Uint8 *stream, int len)
 {
-        if ( audio_len == 0 ) return;
-        len = ( ((unsigned int)len) > audio_len ? audio_len : ((unsigned int)len) );
-        SDL_MixAudio(stream, audio_pos, len, SDL_MIX_MAXVOLUME);
-        audio_pos += len;
-        audio_len -= len;
+    int avail = available_sound_data();
+
+    if ( avail < len ) {
+        SDL_memset( stream + avail, 0, len - avail );
+
+        len = avail;
+    }
+
+    int total_len = len;
+    int written = 0;
+
+    // we need to loop if we hit the ring buffer boundary while trying
+    // to fill len audio bytes
+    while ( total_len > 0 ) {
+        if ( btail + len > BUFSIZE ) {
+            len = BUFSIZE - btail;
+        }
+
+        SDL_MixAudio(stream + written, &buf.b8[btail], len, SDL_MIX_MAXVOLUME);
+
+        btail = ( btail + len ) % BUFSIZE;
+        written += len;
+
+        total_len -= len;
+
+        // try again to write all data
+        len = total_len;
+    }
+    
 	/* udata is not used, but that's because of SDL */
+
+    // for a signal we should need the lock but we do it anyway (more
+    // often than we need)
+    pthread_cond_signal( &cond );
 }
 
-int try_to_output()
+int write_output()
 {
 	int x;
-	int n=blocksize*multiplier;
-	if (!bqueue) return(0);
+	//int n=blocksize*multiplier;
 
-	/* send audio to SDL */
-	if (toOutFile==0)
-	{
-		audio_len=n;
-		audio_chunk=&buf.b8[btail];
-		audio_pos=audio_chunk;
+	if (toOutFile==0) {
+        return 0;
+    }
 
-		while(audio_len > 0)
-		{
-			force8 ? SDL_Delay(25) : SDL_Delay(50);
-		}
+    int total_len = available_sound_data();
+    int len;
+    
+    while ( total_len > 0 ) {
+        len = total_len;
+        if ( btail + len > BUFSIZE ) {
+            len = BUFSIZE - btail;
         }
-	/* write to a raw LSB PCM file */
-	else
-	{
-		loop:
-		x=write(sndhdl,&buf.b8[btail],n);
-		if (x<n)
-		{
-			if (!x)
-			{
-/*				usleep(50000);*/
-				goto loop;
-			}
-			else if (x<0)
-			{
-/*				usleep(50000);*/
-				goto loop;
 
-				perror("write");
-				if (errno==EINTR) goto loop;
-				close(sndhdl);
-				_exit(1);
-			}
-			else
-				fprintf(stderr,"put_bytes: wrote only %d instead of %d\n",x,n);
-		}
+		x = write( sndhdl, &buf.b8[btail], len );
+
+        if ( x <= 0 ) {
+            perror("write");
+            close(sndhdl);
+            _exit(1);
+        }
+
+        btail = ( btail + len ) % BUFSIZE;
+
+        total_len -= x;
 	}
-	
-	btail=(btail+n)&(bofsize);
-	bqueue--;	
 	
 	/* did not have any return value */
 	return 1;
 }
 
-
-
 int play_it()
 {
+    pthread_mutex_init( &lock, NULL );
+    pthread_cond_init( &cond, NULL );
+    
 	while (try_to_makeblock());
 	while (try_to_makeblock()>=0)
 	{
-		try_to_output();
+		write_output();
 	}
-	while (try_to_output());
-	return (0);
+
+    write_output();
+
+    if (toOutFile==0) {
+        while ( available_sound_data() > 0 ) SDL_Delay( 25 );
+    }
+
+    pthread_mutex_destroy( &lock );
+    pthread_cond_destroy( &cond );
+
+    return (0);
 }

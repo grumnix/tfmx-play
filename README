@@ -1,6 +1,6 @@
-                          #######=======------+
-                          | tfmx-play/SDL 1.1 |
-                          +------=======#######
+                          ########========------+
+                          | tfmx-play/SDL 1.1.7 |
+                          +-------========#######
 
       --== writing to a file is possible again, on Linux as well ==--
 
@@ -17,6 +17,7 @@ TFMX format detection code from UADE contributed by Michael Doering
 even more help and bugreports also by Michael Doering <mldoering@gmx.net>
 bugreports and -fixes by Sven Janssen <sven@stalkingwolf.de>
 bug report/feature-request by Raik Lieske <raik.lieske@gmx.net>
+rewritten sound buffer handling by Ralf Hoffmann <ralf@boomerangsworld.de>
 
 USE
 ---

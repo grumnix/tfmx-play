@@ -360,7 +360,7 @@ May cause crashes/hangups on big-endian CPUs!\n");
 
 void usage(char *x)
 {
-	fprintf(stderr,"tfmxplay v1.1.6/SDL by Jon Pickard <marxmarv@antigates.com>,\n"
+	fprintf(stderr,"tfmxplay v1.1.7/SDL by Jon Pickard <marxmarv@antigates.com>,\n"
 "Neochrome <neko@netcologne.de> and others.\n"
 "Copyright 1996-2004, see accompanying README for details.\n"
 "\n"
