@@ -14,7 +14,7 @@ struct Hdb
 	S8 *sbeg,*SampleStart;
 	U8 vol;
 	U8 mode;
-	int (*loop)();
+	int (*loop)(struct Hdb *hw);
 	int loopcnt;
 	struct Cdb *c;
 };

@@ -48,7 +48,7 @@ int multimode=0;
 U32 eClocks=14318;
 
 void NotePort(U32 i);
-int LoopOff(void /* struct Hdb *hw */);
+int LoopOff(struct Hdb *hw);
 int LoopOn(struct Hdb *hw);
 void RunMacro(struct Cdb *c, U32 nChannel);
 void DoEffects(struct Cdb *c);
@@ -132,7 +132,7 @@ void NotePort(U32 i)
 		return;\
 	}
 
-int LoopOff(/* struct Hdb *hw */)
+int LoopOff(struct Hdb *hw)
 {
 	return 1;
 }

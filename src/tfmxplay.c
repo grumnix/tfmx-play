@@ -28,7 +28,7 @@
 void open_sndfile();
 void open_snddev();
 void TfmxInit();
-void StartSong();
+void StartSong(int song, int mode);
 void play_it();
 void TfmxTakedown();
 
@@ -72,7 +72,7 @@ extern int force8;
 struct Hdr hdr;
 extern struct Hdb hdb[8];
 extern struct Pdblk pdb;
-extern int LoopOff();
+extern int LoopOff(struct Hdb *);
 extern struct Mdb mdb;
 
 extern char act[8];
